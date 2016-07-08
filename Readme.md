@@ -4,13 +4,11 @@ Installation steps
 * Prefly
 * Install ansible
 * Checkout ceph-ansible and mira-ceph-ansible
-* Update roles path to add ceph-ansible roles
 * Edit inventory file
 * Edit Parameters
+* Prepare vars files
 * Run pools.py to get pools.yml
-* Check pools.yml
 * Run site.yml
-* Run pools.yml
 
 Prefly
 ======
@@ -38,15 +36,11 @@ Checkout ceph-ansible and mira-ceph-ansible
     # git clone https://github.com/ceph/ceph-ansible.git
     # git clone https://github.com/Mirantis/mira-ceph-ansible.git
 
+Be strict about directories names and locations. In case if you
+would organize you code in other way you will need to update ansible.cfg file.
 
-All subsequent steps should be executed from *mira-ceph-ansible* folder
 
-Update roles path to add ceph-ansible roles
-===========================================
-
-Edit ansible.cfg. Add line
-
-    roles_path = PATH_TO_CEPH_ANSIBLE/roles
+All subsequent steps should be executed from 'mira-ceph-ansible' folder
 
 Edit inventory file
 ===================
@@ -97,10 +91,10 @@ raw_journal_devices:
   - /dev/sdc5 
   - /dev/sdd1 
 
-Edit *pools* section, if need.
+Edit 'pools' section, if need.
 
-  pools:
-      POOL_NAME: POOL_WEIGHT
+    pools:
+        POOL_NAME: POOL_WEIGHT
 
 Pool weight should be proportional to pool data size/io activity.
 Set all small weight to 0. Usually only volumes,compute,images, and ".rgw"
@@ -112,7 +106,7 @@ You can also specify
     min_pg_per_pool_per_osd: int (default=2)
     pg_per_osd: int (default=200)
 
-min\_pg\_per\_pool\_per\_osd set minimal average PG, stored from each pool on each OSD
+min\_pg\_per\_pool\_per\_osd set minimal average PG, stored from each pool on each OSD,
 pg\_per\_osd set average PG per OSD (sum over all pools)
 
 Prepare vars files
