@@ -1,0 +1,23 @@
+---
+
+- hosts: mons
+  become: True
+  roles:
+  - ceph-mon
+
+- hosts: osds
+  become: True
+  roles:
+  - ceph-osd
+
+- include: pools.yml
+
+- hosts: rgws
+  become: True
+  roles:
+  - ceph-rgw
+
+- hosts: clients
+  become: True
+  roles:
+  - ceph-client
