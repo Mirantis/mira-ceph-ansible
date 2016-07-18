@@ -30,6 +30,12 @@ You need ansible 1.8.4+. It can be installed using pip
 
 You can use [virtual-env][venv] to avoid overriding system ansible.
 
+Or system-wide from 'ppa:ansible/ansible' with
+
+    # add-apt-repository -y ppa:ansible/ansible
+    # apt-get update
+    # apt-get install -y ansible
+
 Checkout ceph-ansible and mira-ceph-ansible
 ===========================================
 
@@ -38,7 +44,7 @@ Checkout ceph-ansible and mira-ceph-ansible
 
 Be strict about directories names and locations. In case if you
 would organize you code in other way you will need to update ansible.cfg file.
-
+Read README.md from ceph-ansible repo.
 
 All subsequent steps should be executed from 'mira-ceph-ansible' folder
 
@@ -73,28 +79,45 @@ You have to use hostnames and not ip address in inventory.
 Edit Parameters
 ===============
 
-Open 'group_vars/osds' and set storage devices and journal devices:
+Set ip/interface for monitors to listen on. Either per host
+or globally.
 
-devices:
-  - /dev/sdg 
-  - /dev/sdh 
-  - /dev/sdi 
-  - /dev/sdj 
-  - /dev/sdk 
-  - /dev/sdl 
+UPDATE_ME
 
-raw_journal_devices:
-  - /dev/sdc1 
-  - /dev/sdc2 
-  - /dev/sdc3 
-  - /dev/sdc4 
-  - /dev/sdc5 
-  - /dev/sdd1 
+group_vars/osds
+---------------
+
+In case if you colocate journals with osd(not recommended):
+osd_auto_discovery: false
+raw_multi_journal: true
+journal_colocation: false
+
+In case if you use separated partitions for journals:
+
+    devices:
+      - /dev/sdg
+      - /dev/sdh
+      - /dev/sdi
+      - /dev/sdj
+      - /dev/sdk
+      - /dev/sdl
+    raw_journal_devices:
+      - /dev/sdc1
+      - /dev/sdc2
+      - /dev/sdc3
+      - /dev/sdc4
+      - /dev/sdc5
+      - /dev/sdd1
 
 Edit 'pools' section, if need.
 
     pools:
-        POOL_NAME: POOL_WEIGHT
+        POOL_NAME1: POOL_WEIGHT1
+        POOL_NAME2: POOL_WEIGHT2
+        ....
+        POOL_NAMEN: POOL_WEIGHTN
+
+File already contains default values for openstack + ceph for hammer release.
 
 Pool weight should be proportional to pool data size/io activity.
 Set all small weight to 0. Usually only volumes,compute,images, and ".rgw"
@@ -117,6 +140,7 @@ values.
 
 Generate pools.yml
 ==================
+
 Run
 
     # python py/generate_pools.py hosts > pools.yml
@@ -125,14 +149,26 @@ pools.yml now contains ansible play for creationg pools.
 You can review and update it, if need.
 
 
-Run site.yml
+Install ceph
 ============
+
 Run
 
     # ansible-play -i hosts site.yml
 
 In case if you face an error you can rerun it with -v/-vv/-vvvv
-to get more detaild output.
+to get more detailed output.
+
+
+Purging the cluster
+===================
+
+*Don't use purge-cluster.yml, comes with ceph-ansible for ubuntu systems.*
+*Use ones from mira-ceph-ansible.*
+
+Run
+
+    # ansible-play -i hosts purge-cluster.yml
 
 [venv]: https://virtualenv.pypa.io/en/stable/
 [ans-inv]: http://docs.ansible.com/ansible/intro_inventory.html

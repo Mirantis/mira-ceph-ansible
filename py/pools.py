@@ -47,7 +47,7 @@ def get_pool_pg_count(osd_num, pool_sz, pools,
         pool_sz: int - pool size
         pools - {pool_name: weight}
         pg_per_osd:int, default 200 - lower boundry of PG per OSD
-        minimal_pg_count: int, default 64 - minimal amout of PG per pool
+        min_pg_per_pool_per_osd: int, default 2 - minimal amout of PG per pool per OSD
 
     returns dictionary {pool_name: pool_pg_count}, with additional key -
     default_pg_num - default PG count for all pools, not in result
@@ -91,6 +91,98 @@ def get_pool_pg_count(osd_num, pool_sz, pools,
     return res
 
 
+def get_pool_pg_count_ex(osd_num,
+                         pools,
+                         min_pgc_per_osd=100,
+                         max_pgc_per_osd=300,
+                         min_pgc_per_pool_per_osd=2,
+                         default_size=3):
+    """calculate pg count for pools
+
+    parametes:
+        osd_num: int - OSD count
+        pools - {pool_name: (weight, size)}
+        min_pg_copy_per_osd:int, default 100 - lower boundry of PG per OSD
+        max_pg_copy_per_osd:int, default 300 - upper boundry of PG per OSD
+        min_pg_copy_per_pool_per_osd: int, default 2 - minimal amout of PG per pool per OSD
+
+    returns
+
+    dictionary {pool_name: pool_pg_count}, with additional key -
+    default_pg_num - default PG count for all pools, not in result
+
+    * Estimated total amount of PG copyis calculated as
+      (OSD * PG_COPY_PER_OSD),
+      where PG_COPY_PER_OSD == 200 for now
+    * Each small pool gets one PG copy per OSD. Means (OSD / pool_sz) groups
+    * All the rest PG are devided between rest pools, proportional to their weights.
+    * Each PG count is rounded to next power of 2
+    """
+
+    if 0 == len(pools):
+        return {'default_pg_num': to_upper_power_two(
+            min_pgc_per_osd * osd_num / default_size)}
+
+    # all over across the code "PG copy" is used, which is
+    # a single copy of PG. If pool_sz == 3, that mean
+    # that each PG has 3 copies
+
+    # check than we have at least one large pool
+    sum_weight = sum(weight for weight, _ in pools.values())
+
+    # if all pools empty - split PG equally across all of them
+    if sum_weight == 0:
+        pools = dict((name, (1, size)) for name, (_, size) in pools.items())
+        sum_weight = len(pools)
+
+    # calculate minimal PG count
+    min_pgc = min_pgc_per_pool_per_osd * osd_num
+
+    # set minimal PG count for all small pools
+    pgc_per_pool = {}
+    for pool_name, (weight, size) in pools.items():
+        if 0 == weight:
+            pgc_per_pool[pool_name] = to_upper_power_two(float(min_pgc) / size) * size
+
+    reserved_pgc = sum(pgc_per_pool.values())
+    pgc_per_w = float(osd_num * min_pgc_per_osd - reserved_pgc) / sum_weight
+
+    for pool_name, (weight, size) in pools.items():
+        if 0 != weight:
+            pgc = float(max(pgc_per_w * weight, min_pgc))
+            pgc_per_pool[pool_name] = to_upper_power_two(pgc / size) * size
+
+    # as to_upper_power_two used, current_sum >= osd_num * min_pgc_per_osd
+    current_sum = sum(pgc_per_pool)
+    assert current_sum >= osd_num * min_pgc_per_osd
+
+    free_pgc = osd_num * max_pgc_per_osd - current_sum
+
+    # sort pools using weight as a key
+    w_sorted_pools = [(weight, pool_name, size)
+                      for pool_name, (weight, size) in pools.items()
+                      if weight != 0]
+
+    # split free_pgc across all large pools, step-by-step duplicating
+    # PG for each, while possible
+    found = True
+    while found:
+        found = False
+        for _, pool_name, size in sorted(w_sorted_pools):
+            curr_pgc = pgc_per_pool[pool_name]
+            if curr_pgc <= free_pgc:
+                pgc_per_pool[pool_name] *= 2
+                free_pgc -= curr_pgc
+                found = True
+
+    # convert from PG_copies back to PG
+    res = dict((name, pg // pools[name][1])
+               for name, pg in pgc_per_pool.items())
+    res['default_pg_count'] = to_upper_power_two(
+        min_pgc_per_osd * osd_num / default_size)
+    return res
+
+
 pool_tmpl = '    - {{name: "{name}", pg_num: {pg_num}}}\n'
 
 pool_template_cycle = """---
@@ -125,22 +217,31 @@ def make_create_pools_site(inv, opts):
 
     pool_sz = osd_vars['pool_default_size']
     pools = osd_vars['pools']
-    pg_per_osd = osd_vars.get('pg_per_osd', 200)
+
     min_pg_per_pool_per_osd = osd_vars.get('min_pg_per_pool_per_osd', 2)
 
-    pool2pg = get_pool_pg_count(osd_count, pool_sz, pools,
-                                pg_per_osd=pg_per_osd,
-                                min_pg_per_pool_per_osd=min_pg_per_pool_per_osd)
+    if isinstance(pools.values()[0], list):
+        min_pgc_per_osd = osd_vars.get('min_pgc_per_osd', 100)
+        max_pgc_per_osd = osd_vars.get('max_pgc_per_osd', 300)
+        pool2pg = get_pool_pg_count_ex(osd_count,
+                                       pools,
+                                       min_pgc_per_osd=min_pgc_per_osd,
+                                       max_pgc_per_osd=max_pgc_per_osd,
+                                       min_pg_per_pool_per_osd=min_pg_per_pool_per_osd,
+                                       default_size=pool_sz)
+    else:
+        pg_per_osd = osd_vars.get('pg_per_osd', 200)
+        pool2pg = get_pool_pg_count(osd_count,
+                                    pool_sz,
+                                    pools,
+                                    pg_per_osd=pg_per_osd,
+                                    min_pg_per_pool_per_osd=min_pg_per_pool_per_osd)
 
     default_pg_num = pool2pg.pop('default_pg_num')
 
-    yaml_pg_pools = {
-        key: (key.replace(".", "_"), val) for key, val in pool2pg.items()
-    }
-
     res = ""
-    for name, (rname, pg_num) in yaml_pg_pools.items():
-        res += pool_tmpl.format(name=rname, pg_num=pg_num)
+    for name, pg_num in pool2pg.items():
+        res += pool_tmpl.format(name=name, pg_num=pg_num)
 
     pools_creation_yaml = pool_template_cycle.format(pools=res, cluster='ceph')
     return pools_creation_yaml, default_pg_num
