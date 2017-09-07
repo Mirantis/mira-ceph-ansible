@@ -207,7 +207,10 @@ pool_template_cycle = """---
 # role 'has_pool' ???
 
 
-def make_create_pools_site(inv, opts):
+def make_pool_creation_manifest(inv, opts):
+    """
+    Create ansible manifest content
+    """
     osd_count = 0
     osds = inv.get_hosts('osds')
     for host in osds:
@@ -256,7 +259,7 @@ def main(argv):
                         help="path to inventory file")
     opts = parser.parse_args(argv[1:])
     inv = Inventory(DataLoader(), VariableManager(), opts.inventory)
-    print make_create_pools_site(inv, opts)[0]
+    print make_pool_creation_manifest(inv, opts)[0]
 
 
 if __name__ == "__main__":
